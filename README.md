@@ -1,78 +1,68 @@
 # Downloads Folder Janitor
 
-This project now includes:
+Downloads Folder Janitor now supports both a local Python workflow and a
+browser-based web app that can be deployed with GitHub Pages.
 
-- `downloads_janitor.py`: a command-line utility
-- `downloads_janitor_ui.py`: a desktop UI for running the janitor with prompts
+## What this repo includes
 
-Both clean up a messy Downloads folder by sorting top-level files into category
-folders such as `Images`, `Documents`, `Installers`, and `Archives`.
+- `index.html`, `styles.css`, `app.js`
+  A static web app that asks the four janitor questions in the browser, scans a
+  selected folder, shows suggested categories, and then sorts top-level files
+  with a live 0 to 100 progress bar.
+- `downloads_janitor.py`
+  A command-line utility for sorting a Downloads folder from Terminal.
+- `downloads_janitor_ui.py`
+  A local desktop Tkinter version of the janitor flow.
+- `.github/workflows/deploy-pages.yml`
+  A GitHub Actions workflow that publishes the static web app to GitHub Pages.
 
-Files older than 60 days are treated differently:
+## Important browser constraint
 
-- They are moved into a separate review folder named
-  `Janitor Review - Older Than <N> Days`
-- After the move, the script asks whether you want to delete that entire review
-  folder
+The web app can run from a GitHub Pages link, but browsers do not allow a page
+to silently access your Mac's `~/Downloads` folder.
 
-The desktop UI uses a 90-day rule and asks whether those older files should be
-deleted automatically or sorted like recent files.
+That means the browser version works like this:
 
-This makes it easy to keep recent downloads organized while batching old files
-into one place for a quick cleanup decision.
+1. You open the GitHub Pages URL.
+2. The app asks you to choose your Downloads folder.
+3. After you grant access, it scans only the top-level files in that folder.
+4. When you approve the plan, it sorts those top-level files into category
+   folders.
 
-## How it works
+For best results, use Chrome or Edge on desktop. Safari does not fully support
+the required folder access APIs.
 
-- Sorts only files in the top level of the target folder
-- Leaves existing subfolders alone
-- Skips hidden files by default
-- Creates numbered filenames if a destination file already exists
+## Web app flow
 
-## Usage
+The browser version asks:
 
-Launch the desktop UI:
+1. Do you want to sort your downloads folder out?
+2. Let me scan through your downloads folder. Are these categories fair?
+3. Do you want files older than 90 days deleted or sorted normally?
+4. Run the Downloads Janitor?
 
-```bash
-python3 downloads_janitor_ui.py
-```
+When you confirm, the app shows a live progress bar and finishes with a
+`Downloads Folder sorted!` success screen.
 
-Run it against your actual Downloads folder:
+## GitHub Pages link
 
-```bash
-python3 downloads_janitor.py
-```
+Once GitHub Pages is enabled for this repository, the live app URL will be:
 
-Run it against a different folder:
+`https://skedia16.github.io/downloads-janitor/`
 
-```bash
-python3 downloads_janitor.py /path/to/folder
-```
+Important: the repository page on `github.com` shows the code. The GitHub Pages
+URL is the actual web app.
 
-Preview changes without moving anything:
+## How to enable GitHub Pages
 
-```bash
-python3 downloads_janitor.py --dry-run
-```
+Because this repo now includes a Pages deployment workflow, the remaining setup
+is in GitHub:
 
-Use a different age threshold:
-
-```bash
-python3 downloads_janitor.py --days 90
-```
-
-Choose how old files should be handled in the CLI:
-
-```bash
-python3 downloads_janitor.py --old-files review
-python3 downloads_janitor.py --old-files sort
-python3 downloads_janitor.py --old-files delete
-```
-
-Include hidden files:
-
-```bash
-python3 downloads_janitor.py --include-hidden
-```
+1. Open the repository on GitHub.
+2. Go to `Settings` -> `Pages`.
+3. Under `Build and deployment`, choose `GitHub Actions`.
+4. Push the latest commit from this repo.
+5. After the workflow finishes, open the Pages URL shown above.
 
 ## Category buckets
 
@@ -87,6 +77,30 @@ python3 downloads_janitor.py --include-hidden
 - `Code`
 - `Other`
 
-You can extend the category map inside
-`/Users/shreyakedia/Documents/Downloads Janitor/downloads_janitor.py` if you
-want different folder names or file types.
+## Local Python options
+
+Launch the desktop UI:
+
+```bash
+python3 downloads_janitor_ui.py
+```
+
+Run the CLI:
+
+```bash
+python3 downloads_janitor.py
+```
+
+Preview changes without moving anything:
+
+```bash
+python3 downloads_janitor.py --dry-run
+```
+
+Choose how old files should be handled in the CLI:
+
+```bash
+python3 downloads_janitor.py --old-files review
+python3 downloads_janitor.py --old-files sort
+python3 downloads_janitor.py --old-files delete
+```

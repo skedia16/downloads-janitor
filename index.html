@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Downloads Folder Janitor</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Browser-Based Cleanup</p>
+          <h1>Downloads Folder Janitor</h1>
+          <p class="hero-text">
+            A guided web app that scans the top level of your Downloads folder,
+            suggests smart category folders, and sorts your files after you
+            approve the plan.
+          </p>
+        </div>
+        <div class="hero-badge">
+          <span>Best in Chrome or Edge</span>
+          <strong>Folder access stays in your browser</strong>
+        </div>
+      </header>
+
+      <main class="app-card">
+        <div class="step-meter">
+          <div class="step-dot is-active" data-step-indicator="1">1</div>
+          <div class="step-dot" data-step-indicator="2">2</div>
+          <div class="step-dot" data-step-indicator="3">3</div>
+          <div class="step-dot" data-step-indicator="4">4</div>
+        </div>
+
+        <div class="support-banner" id="supportBanner" hidden>
+          This browser does not support direct folder sorting. Open this page in
+          Chrome or Edge on desktop to continue.
+        </div>
+
+        <section class="step-panel is-visible" data-step="1">
+          <div class="panel-intro">
+            <p class="question-number">Question 1</p>
+            <h2>Do you want to sort your downloads folder out?</h2>
+            <p>
+              To protect your files, the browser will ask you to choose the
+              folder first. This app only processes top-level files and leaves
+              existing subfolders alone.
+            </p>
+          </div>
+
+          <div class="button-row">
+            <button class="primary-button" id="startButton">
+              Yes, choose my folder
+            </button>
+            <button class="secondary-button" id="exitButton">No</button>
+          </div>
+        </section>
+
+        <section class="step-panel" data-step="2">
+          <div class="panel-intro">
+            <p class="question-number">Question 2</p>
+            <h2>Let me scan through your downloads folder.</h2>
+            <p>
+              Are these categories fair for the files you have? These are the
+              suggested folders based on the file extensions found in the top
+              level of the folder you selected.
+            </p>
+          </div>
+
+          <div class="folder-pill-row">
+            <span class="folder-pill" id="folderNamePill">No folder selected</span>
+            <span class="folder-pill subtle" id="fileCountPill">0 files</span>
+            <span class="folder-pill subtle" id="oldCountPill">0 old files</span>
+          </div>
+
+          <div class="category-board" id="categoryBoard"></div>
+
+          <div class="button-row">
+            <button class="primary-button" id="categoriesFairButton">
+              Yes, these categories work
+            </button>
+            <button class="secondary-button" id="rescanButton">
+              Choose a different folder
+            </button>
+          </div>
+        </section>
+
+        <section class="step-panel" data-step="3">
+          <div class="panel-intro">
+            <p class="question-number">Question 3</p>
+            <h2>How should files older than 90 days be handled?</h2>
+            <p>
+              Choose whether older files should be deleted automatically or
+              sorted into the same categories as your recent downloads.
+            </p>
+          </div>
+
+          <div class="choice-grid">
+            <label class="choice-card is-selected" data-choice-card="sort">
+              <input
+                type="radio"
+                name="old-file-action"
+                value="sort"
+                checked
+              />
+              <span class="choice-title">Sort them normally</span>
+              <span class="choice-detail">
+                Old files are kept and moved into the same category folders as
+                newer files.
+              </span>
+            </label>
+
+            <label class="choice-card" data-choice-card="delete">
+              <input type="radio" name="old-file-action" value="delete" />
+              <span class="choice-title">Delete old files</span>
+              <span class="choice-detail">
+                Files older than 90 days are deleted from the chosen folder
+                during the run.
+              </span>
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button class="primary-button" id="oldFileNextButton">
+              Continue
+            </button>
+            <button class="secondary-button" id="oldFileBackButton">Back</button>
+          </div>
+        </section>
+
+        <section class="step-panel" data-step="4">
+          <div class="panel-intro">
+            <p class="question-number">Question 4</p>
+            <h2>Run the Downloads Janitor?</h2>
+            <p>
+              Review the plan below. When you confirm, the janitor will start
+              sorting the chosen folder and show a live progress bar from 0 to
+              100%.
+            </p>
+          </div>
+
+          <div class="summary-card" id="summaryCard"></div>
+
+          <div class="button-row">
+            <button class="primary-button" id="runButton">
+              Yes, run the janitor
+            </button>
+            <button class="secondary-button" id="summaryBackButton">Back</button>
+          </div>
+        </section>
+
+        <section class="step-panel" data-step="5">
+          <div class="panel-intro">
+            <p class="question-number">In Progress</p>
+            <h2>Sorting in progress</h2>
+            <p>
+              The janitor is processing the files in the folder you approved.
+            </p>
+          </div>
+
+          <div class="progress-shell">
+            <div class="progress-heading">
+              <span id="progressLabel">0%</span>
+              <span id="progressMeta">Preparing files...</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+          </div>
+
+          <div class="activity-log" id="activityLog"></div>
+        </section>
+
+        <section class="step-panel" data-step="6">
+          <div class="success-card">
+            <p class="question-number">Complete</p>
+            <h2>Downloads Folder sorted!</h2>
+            <p id="successText">
+              Your approved file plan has been completed.
+            </p>
+            <div class="button-row">
+              <button class="primary-button" id="restartButton">
+                Run again
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
