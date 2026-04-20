@@ -140,6 +140,16 @@ textarea {
   margin-bottom: 20px;
 }
 
+.inline-message {
+  margin-top: 18px;
+  border-radius: var(--radius-md);
+  background: rgba(122, 153, 80, 0.12);
+  border: 1px solid rgba(122, 153, 80, 0.24);
+  color: var(--accent-dark);
+  padding: 14px 16px;
+  max-width: 420px;
+}
+
 .step-panel {
   display: none;
   min-height: 420px;

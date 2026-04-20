@@ -46,6 +46,7 @@ const progressLabel = document.querySelector("#progressLabel");
 const progressMeta = document.querySelector("#progressMeta");
 const activityLog = document.querySelector("#activityLog");
 const successText = document.querySelector("#successText");
+const exitMessage = document.querySelector("#exitMessage");
 
 const startButton = document.querySelector("#startButton");
 const exitButton = document.querySelector("#exitButton");
@@ -71,7 +72,7 @@ function init() {
 
   startButton.addEventListener("click", handleChooseFolder);
   exitButton.addEventListener("click", () => {
-    window.location.reload();
+    exitMessage.hidden = false;
   });
   categoriesFairButton.addEventListener("click", () => showStep(3));
   rescanButton.addEventListener("click", handleChooseFolder);
@@ -111,10 +112,13 @@ function showStep(stepNumber) {
 }
 
 async function handleChooseFolder() {
+  supportBanner.hidden = true;
+  exitMessage.hidden = true;
+
   try {
     const directoryHandle = await window.showDirectoryPicker({
       id: "downloads-janitor-folder",
-      mode: "readwrite",
+      mode: "read",
     });
 
     state.directoryHandle = directoryHandle;
@@ -128,7 +132,7 @@ async function handleChooseFolder() {
       return;
     }
     supportBanner.hidden = false;
-    supportBanner.textContent = `Could not access the selected folder: ${error.message}`;
+    supportBanner.textContent = folderAccessMessage(error);
   }
 }
 
@@ -253,6 +257,15 @@ function summaryLine(label, value) {
 }
 
 async function runJanitor() {
+  const hasWritePermission = await ensureWritePermission(state.directoryHandle);
+  if (!hasWritePermission) {
+    supportBanner.hidden = false;
+    supportBanner.textContent =
+      "The browser would not grant write access to that folder. This usually happens with protected system folders. Try a normal folder, or run the local Python version for your actual Downloads folder.";
+    showStep(4);
+    return;
+  }
+
   showStep(5);
   activityLog.innerHTML = "";
   updateProgress(0, "Preparing files...");
@@ -386,6 +399,7 @@ function resetApp() {
   state.directoryHandle = null;
   state.directoryName = "";
   state.oldFileAction = "sort";
+  exitMessage.hidden = true;
   actionInputs.forEach((input) => {
     input.checked = input.value === "sort";
   });
@@ -399,6 +413,39 @@ function resetApp() {
   updateProgress(0, "Preparing files...");
   supportBanner.hidden = true;
   showStep(1);
+}
+
+async function ensureWritePermission(directoryHandle) {
+  if (!directoryHandle) {
+    return false;
+  }
+
+  try {
+    const current = await directoryHandle.queryPermission({ mode: "readwrite" });
+    if (current === "granted") {
+      return true;
+    }
+
+    const requested = await directoryHandle.requestPermission({ mode: "readwrite" });
+    return requested === "granted";
+  } catch (error) {
+    return false;
+  }
+}
+
+function folderAccessMessage(error) {
+  const message = `${error?.message || ""}`.toLowerCase();
+
+  if (
+    message.includes("system files") ||
+    message.includes("not allowed") ||
+    message.includes("restricted") ||
+    message.includes("sensitive")
+  ) {
+    return "Your browser is blocking that folder because it treats it as a protected system location. Try scanning a normal test folder in the web app, or use the local Python app for your real Downloads folder.";
+  }
+
+  return `Could not access the selected folder: ${error.message}`;
 }
 
 function escapeHtml(value) {
