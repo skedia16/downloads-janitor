@@ -1,14 +1,19 @@
 # Downloads Folder Janitor
 
-Downloads Folder Janitor now supports both a local Python workflow and a
-browser-based web app that can be deployed with GitHub Pages.
+Downloads Folder Janitor now supports:
+
+- an Electron desktop app for the real macOS `~/Downloads` folder
+- a local Python workflow
+- a browser-based web app that can be deployed with GitHub Pages
 
 ## What this repo includes
 
+- `package.json`, `electron/main.js`, `electron/preload.js`
+  An Electron desktop app that uses the same guided UI but runs against your
+  real `~/Downloads` folder on your Mac.
 - `index.html`, `styles.css`, `app.js`
-  A static web app that asks the four janitor questions in the browser, scans a
-  selected folder, shows suggested categories, and then sorts top-level files
-  with a live 0 to 100 progress bar.
+  The shared renderer UI. In Electron it powers the desktop app. In a browser,
+  it can also run as a GitHub Pages demo against a user-selected folder.
 - `downloads_janitor.py`
   A command-line utility for sorting a Downloads folder from Terminal.
 - `downloads_janitor_ui.py`
@@ -16,7 +21,87 @@ browser-based web app that can be deployed with GitHub Pages.
 - `.github/workflows/deploy-pages.yml`
   A GitHub Actions workflow that publishes the static web app to GitHub Pages.
 
-## Important browser constraint
+## Recommended way to use it
+
+If you want to sort your actual macOS `~/Downloads` folder, use the Electron
+desktop app. That is the version designed for real local file access.
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Launch the desktop app:
+
+```bash
+npm start
+```
+
+## Make it public for other people
+
+The most user-friendly GitHub setup is:
+
+1. Push the Electron app source to GitHub.
+2. Build a downloadable macOS app artifact.
+3. Attach that artifact to a GitHub Release.
+4. Send people the Release page, not just the repository homepage.
+
+This repo now includes Electron Forge packaging and a GitHub Actions workflow
+for macOS builds.
+
+### Build a downloadable app locally
+
+Create distributable artifacts on your Mac:
+
+```bash
+npm run make
+```
+
+The build output will be created under:
+
+```bash
+out/make/
+```
+
+You should expect macOS-friendly distributables such as a `.zip` and `.dmg`.
+
+### Build through GitHub Actions
+
+This repo includes:
+
+- `.github/workflows/build-desktop.yml`
+- `forge.config.js`
+
+To build on GitHub:
+
+1. Push your latest changes.
+2. Create and push a tag like `v1.0.0`.
+3. Open the `Actions` tab in GitHub.
+4. Open the `Build Desktop App` workflow run.
+5. Download the `downloads-folder-janitor-macos` artifact.
+
+GitHub workflow artifacts are downloadable from the Actions run summary page.
+GitHub documents this artifact flow here:
+[Workflow artifacts](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts)
+and
+[Downloading workflow artifacts](https://docs.github.com/en/actions/managing-workflow-runs/downloading-workflow-artifacts).
+
+### Best sharing flow for non-technical users
+
+For non-technical users, the cleanest distribution flow is:
+
+1. Build the app artifact.
+2. Create a GitHub Release, for example `v1.0.0`.
+3. Upload the generated `.dmg` and `.zip` files to that Release.
+4. Tell users to download the app from the Releases page.
+
+Important: unsigned macOS apps may trigger a warning the first time someone
+opens them. Electron recommends code signing for desktop distribution because
+macOS and Windows trust signed apps more easily:
+[Electron packaging tutorial](https://www.electronjs.org/docs/latest/tutorial/tutorial-packaging).
+
+## Browser constraint
 
 The web app can run from a GitHub Pages link, but browsers do not allow a page
 to silently access your Mac's `~/Downloads` folder.
@@ -30,7 +115,8 @@ That means the browser version works like this:
    folders.
 
 For best results, use Chrome or Edge on desktop. Safari does not fully support
-the required folder access APIs.
+the required folder access APIs, and protected folders like macOS `Downloads`
+may still be blocked by the browser.
 
 ## Web app flow
 

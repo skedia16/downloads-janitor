@@ -19,18 +19,40 @@ const CATEGORY_MAP = {
   Installers: [".dmg", ".pkg", ".msi", ".exe", ".deb", ".rpm", ".appimage", ".iso"],
   Audio: [".mp3", ".wav", ".aac", ".flac", ".m4a", ".ogg"],
   Video: [".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv", ".m4v"],
-  Code: [".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".c", ".cpp", ".rb", ".go", ".rs", ".html", ".css", ".json", ".xml", ".yml", ".yaml", ".sh"],
+  Code: [
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".java",
+    ".c",
+    ".cpp",
+    ".rb",
+    ".go",
+    ".rs",
+    ".html",
+    ".css",
+    ".json",
+    ".xml",
+    ".yml",
+    ".yaml",
+    ".sh",
+  ],
 };
 
 const OLD_FILE_DAYS = 90;
 const OLD_FILE_MS = OLD_FILE_DAYS * 24 * 60 * 60 * 1000;
+const isDesktopApp = Boolean(window.electronAPI);
 
 const state = {
   directoryHandle: null,
   directoryName: "",
+  folderPath: "",
   records: [],
   oldFileAction: "sort",
   currentStep: 1,
+  removeProgressListener: null,
 };
 
 const supportBanner = document.querySelector("#supportBanner");
@@ -64,18 +86,24 @@ const actionInputs = [...document.querySelectorAll('input[name="old-file-action"
 init();
 
 function init() {
-  const supported = "showDirectoryPicker" in window;
-  if (!supported) {
+  if (!isDesktopApp && !("showDirectoryPicker" in window)) {
     supportBanner.hidden = false;
+    supportBanner.textContent =
+      "This browser does not support direct folder sorting. Open this page in Chrome or Edge, or run the Electron desktop app.";
     startButton.disabled = true;
   }
 
-  startButton.addEventListener("click", handleChooseFolder);
+  if (isDesktopApp) {
+    startButton.textContent = "Yes, scan my Downloads folder";
+    rescanButton.textContent = "Scan Downloads again";
+  }
+
+  startButton.addEventListener("click", handleStart);
   exitButton.addEventListener("click", () => {
     exitMessage.hidden = false;
   });
   categoriesFairButton.addEventListener("click", () => showStep(3));
-  rescanButton.addEventListener("click", handleChooseFolder);
+  rescanButton.addEventListener("click", handleStart);
   oldFileNextButton.addEventListener("click", () => {
     renderSummary();
     showStep(4);
@@ -91,6 +119,16 @@ function init() {
       syncChoiceCards();
     });
   });
+
+  if (isDesktopApp) {
+    state.removeProgressListener = window.electronAPI.onProgress((payload) => {
+      const percent = payload.total === 0 ? 100 : Math.round((payload.completed / payload.total) * 100);
+      const verb = payload.action === "delete" ? "Deleted" : "Sorted";
+
+      updateProgress(percent, `Processed ${payload.completed} of ${payload.total} files`);
+      appendLog(`${verb}: ${payload.fileName}`);
+    });
+  }
 
   syncChoiceCards();
   showStep(1);
@@ -111,10 +149,34 @@ function showStep(stepNumber) {
   });
 }
 
-async function handleChooseFolder() {
+async function handleStart() {
   supportBanner.hidden = true;
   exitMessage.hidden = true;
 
+  if (isDesktopApp) {
+    await scanDesktopDownloads();
+    return;
+  }
+
+  await chooseFolderInBrowser();
+}
+
+async function scanDesktopDownloads() {
+  try {
+    const result = await window.electronAPI.scanDownloadsFolder({ days: OLD_FILE_DAYS });
+    state.directoryName = result.folderName;
+    state.folderPath = result.folderPath;
+    state.records = result.records;
+
+    renderCategoryBoard();
+    showStep(2);
+  } catch (error) {
+    supportBanner.hidden = false;
+    supportBanner.textContent = `Could not scan your Downloads folder: ${error.message}`;
+  }
+}
+
+async function chooseFolderInBrowser() {
   try {
     const directoryHandle = await window.showDirectoryPicker({
       id: "downloads-janitor-folder",
@@ -123,6 +185,7 @@ async function handleChooseFolder() {
 
     state.directoryHandle = directoryHandle;
     state.directoryName = directoryHandle.name;
+    state.folderPath = directoryHandle.name;
     state.records = await scanDirectory(directoryHandle);
 
     renderCategoryBoard();
@@ -131,6 +194,7 @@ async function handleChooseFolder() {
     if (error?.name === "AbortError") {
       return;
     }
+
     supportBanner.hidden = false;
     supportBanner.textContent = folderAccessMessage(error);
   }
@@ -145,16 +209,13 @@ async function scanDirectory(directoryHandle) {
     }
 
     const file = await entry.getFile();
-    const category = categoryForName(entry.name);
-    const isOld = Date.now() - file.lastModified > OLD_FILE_MS;
-
     records.push({
       handle: entry,
       name: entry.name,
-      category,
+      category: categoryForName(entry.name),
       size: file.size,
-      isOld,
       lastModified: file.lastModified,
+      isOld: Date.now() - file.lastModified > OLD_FILE_MS,
     });
   }
 
@@ -186,7 +247,7 @@ function renderCategoryBoard() {
     }
   });
 
-  folderNamePill.textContent = state.directoryName || "Selected folder";
+  folderNamePill.textContent = state.folderPath || state.directoryName || "Downloads";
   fileCountPill.textContent = `${state.records.length} top-level file${state.records.length === 1 ? "" : "s"}`;
   oldCountPill.textContent = `${oldCount} older than ${OLD_FILE_DAYS} days`;
 
@@ -239,7 +300,7 @@ function renderSummary() {
     .join(", ") || "No category folders needed";
 
   summaryCard.innerHTML = `
-    ${summaryLine("Selected folder", state.directoryName || "No folder selected")}
+    ${summaryLine("Selected folder", state.folderPath || state.directoryName || "Downloads")}
     ${summaryLine("Top-level files to process", String(totalFiles))}
     ${summaryLine("Files older than 90 days", String(oldFiles))}
     ${summaryLine("Old-file rule", actionText)}
@@ -257,11 +318,43 @@ function summaryLine(label, value) {
 }
 
 async function runJanitor() {
+  if (isDesktopApp) {
+    await runDesktopJanitor();
+    return;
+  }
+
+  await runBrowserJanitor();
+}
+
+async function runDesktopJanitor() {
+  showStep(5);
+  activityLog.innerHTML = "";
+  updateProgress(0, "Preparing files...");
+  supportBanner.hidden = true;
+
+  try {
+    const result = await window.electronAPI.runDownloadsJanitor({
+      days: OLD_FILE_DAYS,
+      oldFileAction: state.oldFileAction,
+    });
+
+    updateProgress(100, `Processed ${result.total} of ${result.total} files`);
+    finishRun(result.movedCount, result.deletedCount);
+  } catch (error) {
+    appendLog(`Run stopped: ${error.message}`);
+    updateProgress(0, "The janitor stopped before finishing.");
+    supportBanner.hidden = false;
+    supportBanner.textContent = `The janitor could not finish: ${error.message}`;
+    showStep(4);
+  }
+}
+
+async function runBrowserJanitor() {
   const hasWritePermission = await ensureWritePermission(state.directoryHandle);
   if (!hasWritePermission) {
     supportBanner.hidden = false;
     supportBanner.textContent =
-      "The browser would not grant write access to that folder. This usually happens with protected system folders. Try a normal folder, or run the local Python version for your actual Downloads folder.";
+      "The browser would not grant write access to that folder. This usually happens with protected system folders. Try a normal folder, or run the Electron desktop app for your actual Downloads folder.";
     showStep(4);
     return;
   }
@@ -395,14 +488,17 @@ function syncChoiceCards() {
 }
 
 function resetApp() {
-  state.records = [];
   state.directoryHandle = null;
   state.directoryName = "";
+  state.folderPath = "";
+  state.records = [];
   state.oldFileAction = "sort";
   exitMessage.hidden = true;
+
   actionInputs.forEach((input) => {
     input.checked = input.value === "sort";
   });
+
   syncChoiceCards();
   folderNamePill.textContent = "No folder selected";
   fileCountPill.textContent = "0 files";
@@ -428,7 +524,7 @@ async function ensureWritePermission(directoryHandle) {
 
     const requested = await directoryHandle.requestPermission({ mode: "readwrite" });
     return requested === "granted";
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -442,7 +538,7 @@ function folderAccessMessage(error) {
     message.includes("restricted") ||
     message.includes("sensitive")
   ) {
-    return "Your browser is blocking that folder because it treats it as a protected system location. Try scanning a normal test folder in the web app, or use the local Python app for your real Downloads folder.";
+    return "Your browser is blocking that folder because it treats it as a protected system location. Try the Electron desktop app if you want to sort your real Downloads folder.";
   }
 
   return `Could not access the selected folder: ${error.message}`;

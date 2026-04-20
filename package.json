@@ -1,0 +1,23 @@
+{
+  "name": "downloads-janitor",
+  "version": "1.0.0",
+  "productName": "Downloads Folder Janitor",
+  "description": "A guided desktop app that sorts your Downloads folder into category folders.",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "desktop": "electron-forge start",
+    "check": "node --check app.js && node --check electron/main.js && node --check electron/preload.js && node --check forge.config.js",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "config": {
+    "forge": "./forge.config.js"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.1",
+    "@electron-forge/maker-dmg": "^7.8.1",
+    "@electron-forge/maker-zip": "^7.8.1",
+    "electron": "^36.2.0"
+  }
+}
