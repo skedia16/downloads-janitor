@@ -1,48 +1,8 @@
-const CATEGORY_MAP = {
-  Images: [
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".gif",
-    ".webp",
-    ".bmp",
-    ".tif",
-    ".tiff",
-    ".svg",
-    ".heic",
-    ".raw",
-  ],
-  Documents: [".pdf", ".doc", ".docx", ".txt", ".rtf", ".md", ".pages", ".odt"],
-  Spreadsheets: [".xls", ".xlsx", ".csv", ".numbers", ".ods"],
-  Presentations: [".ppt", ".pptx", ".key", ".odp"],
-  Archives: [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tgz"],
-  Installers: [".dmg", ".pkg", ".msi", ".exe", ".deb", ".rpm", ".appimage", ".iso"],
-  Audio: [".mp3", ".wav", ".aac", ".flac", ".m4a", ".ogg"],
-  Video: [".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv", ".m4v"],
-  Code: [
-    ".py",
-    ".js",
-    ".ts",
-    ".tsx",
-    ".jsx",
-    ".java",
-    ".c",
-    ".cpp",
-    ".rb",
-    ".go",
-    ".rs",
-    ".html",
-    ".css",
-    ".json",
-    ".xml",
-    ".yml",
-    ".yaml",
-    ".sh",
-  ],
-};
+// CATEGORY_MAP and categoryForName are loaded from categories.js via <script> in index.html
 
 const OLD_FILE_DAYS = 90;
 const OLD_FILE_MS = OLD_FILE_DAYS * 24 * 60 * 60 * 1000;
+const REVIEW_FOLDER_NAME = `Janitor Review - Older Than ${OLD_FILE_DAYS} Days`;
 const isDesktopApp = Boolean(window.electronAPI);
 
 const state = {
@@ -53,6 +13,8 @@ const state = {
   oldFileAction: "sort",
   currentStep: 1,
   removeProgressListener: null,
+  revertManifest: [],
+  lastDeletedCount: 0,
 };
 
 const supportBanner = document.querySelector("#supportBanner");
@@ -79,6 +41,8 @@ const oldFileBackButton = document.querySelector("#oldFileBackButton");
 const summaryBackButton = document.querySelector("#summaryBackButton");
 const runButton = document.querySelector("#runButton");
 const restartButton = document.querySelector("#restartButton");
+const undoButton = document.querySelector("#undoButton");
+const undoWarning = document.querySelector("#undoWarning");
 
 const choiceCards = [...document.querySelectorAll("[data-choice-card]")];
 const actionInputs = [...document.querySelectorAll('input[name="old-file-action"]')];
@@ -112,6 +76,7 @@ function init() {
   summaryBackButton.addEventListener("click", () => showStep(3));
   runButton.addEventListener("click", runJanitor);
   restartButton.addEventListener("click", resetApp);
+  undoButton.addEventListener("click", undoRun);
 
   actionInputs.forEach((input) => {
     input.addEventListener("change", () => {
@@ -144,8 +109,8 @@ function showStep(stepNumber) {
 
   stepIndicators.forEach((indicator) => {
     const indicatorStep = Number(indicator.dataset.stepIndicator);
-    indicator.classList.toggle("is-active", indicatorStep === Math.min(stepNumber, 4));
-    indicator.classList.toggle("is-complete", indicatorStep < Math.min(stepNumber, 4));
+    indicator.classList.toggle("is-active", indicatorStep === stepNumber);
+    indicator.classList.toggle("is-complete", indicatorStep < stepNumber);
   });
 }
 
@@ -222,20 +187,6 @@ async function scanDirectory(directoryHandle) {
   return records.sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function categoryForName(fileName) {
-  const extensionIndex = fileName.lastIndexOf(".");
-  const extension =
-    extensionIndex >= 0 ? fileName.slice(extensionIndex).toLowerCase() : "";
-
-  for (const [category, extensions] of Object.entries(CATEGORY_MAP)) {
-    if (extensions.includes(extension)) {
-      return category;
-    }
-  }
-
-  return "Other";
-}
-
 function renderCategoryBoard() {
   const counts = new Map();
   let oldCount = 0;
@@ -293,6 +244,8 @@ function renderSummary() {
   const actionText =
     state.oldFileAction === "delete"
       ? `Delete files older than ${OLD_FILE_DAYS} days`
+      : state.oldFileAction === "review"
+      ? `Move files older than ${OLD_FILE_DAYS} days to a review folder`
       : `Sort files older than ${OLD_FILE_DAYS} days into the same folders`;
 
   const destinationFolders = [...new Set(state.records.map((record) => record.category))]
@@ -302,7 +255,7 @@ function renderSummary() {
   summaryCard.innerHTML = `
     ${summaryLine("Selected folder", state.folderPath || state.directoryName || "Downloads")}
     ${summaryLine("Top-level files to process", String(totalFiles))}
-    ${summaryLine("Files older than 90 days", String(oldFiles))}
+    ${summaryLine(`Files older than ${OLD_FILE_DAYS} days`, String(oldFiles))}
     ${summaryLine("Old-file rule", actionText)}
     ${summaryLine("Suggested folders", destinationFolders)}
   `;
@@ -338,6 +291,7 @@ async function runDesktopJanitor() {
       oldFileAction: state.oldFileAction,
     });
 
+    state.revertManifest = result.revertManifest || [];
     updateProgress(100, `Processed ${result.total} of ${result.total} files`);
     finishRun(result.movedCount, result.deletedCount);
   } catch (error) {
@@ -374,6 +328,7 @@ async function runBrowserJanitor() {
 
   let movedCount = 0;
   let deletedCount = 0;
+  const revertManifest = [];
 
   try {
     for (let index = 0; index < state.records.length; index += 1) {
@@ -384,27 +339,53 @@ async function runBrowserJanitor() {
         deletedCount += 1;
         appendLog(`Deleted old file: ${record.name}`);
       } else {
-        const targetDirectory = await state.directoryHandle.getDirectoryHandle(
-          record.category,
-          { create: true },
-        );
+        const isReview = record.isOld && state.oldFileAction === "review";
+        let targetDirectory;
+
+        if (isReview) {
+          const reviewFolder = await state.directoryHandle.getDirectoryHandle(
+            REVIEW_FOLDER_NAME,
+            { create: true },
+          );
+          targetDirectory = await reviewFolder.getDirectoryHandle(record.category, { create: true });
+        } else {
+          targetDirectory = await state.directoryHandle.getDirectoryHandle(
+            record.category,
+            { create: true },
+          );
+        }
+
+        // Use a compound key so review and non-review files don't share reserved name sets
+        const directoryKey = isReview ? `review:${record.category}` : record.category;
         const uniqueName = await getUniqueFileName(
           targetDirectory,
           record.name,
-          record.category,
+          directoryKey,
           reservedNames,
         );
 
         await copyFileIntoDirectory(record.handle, targetDirectory, uniqueName);
-        await state.directoryHandle.removeEntry(record.name);
+        try {
+          await state.directoryHandle.removeEntry(record.name);
+        } catch (removeError) {
+          // Clean up the copy to avoid leaving a duplicate behind
+          try { await targetDirectory.removeEntry(uniqueName); } catch {}
+          throw removeError;
+        }
+
+        revertManifest.push({ originalName: record.name, targetDirectory, movedName: uniqueName });
         movedCount += 1;
-        appendLog(`Sorted ${record.name} into ${record.category}/`);
+        const destination = isReview
+          ? `${REVIEW_FOLDER_NAME}/${record.category}/`
+          : `${record.category}/`;
+        appendLog(`Sorted ${record.name} into ${destination}`);
       }
 
       const percent = Math.round(((index + 1) / totalFiles) * 100);
       updateProgress(percent, `Processed ${index + 1} of ${totalFiles} files`);
     }
 
+    state.revertManifest = revertManifest;
     finishRun(movedCount, deletedCount);
   } catch (error) {
     appendLog(`Run stopped: ${error.message}`);
@@ -473,11 +454,44 @@ function appendLog(message) {
 }
 
 function finishRun(movedCount, deletedCount) {
+  state.lastDeletedCount = deletedCount;
   successText.textContent =
     deletedCount > 0
       ? `Sorted ${movedCount} files and deleted ${deletedCount} older file${deletedCount === 1 ? "" : "s"}.`
       : `Sorted ${movedCount} files into category folders.`;
+
+  const canUndo = state.revertManifest.length > 0;
+  undoButton.hidden = !canUndo;
+  undoWarning.hidden = !(canUndo && deletedCount > 0);
+
   showStep(6);
+}
+
+async function undoRun() {
+  undoButton.disabled = true;
+  undoButton.textContent = "Undoing…";
+
+  try {
+    if (isDesktopApp) {
+      await window.electronAPI.undoLastRun({ revertManifest: state.revertManifest });
+    } else {
+      for (const entry of state.revertManifest) {
+        const fileHandle = await entry.targetDirectory.getFileHandle(entry.movedName);
+        await copyFileIntoDirectory(fileHandle, state.directoryHandle, entry.originalName);
+        await entry.targetDirectory.removeEntry(entry.movedName);
+      }
+    }
+
+    state.revertManifest = [];
+    successText.textContent = "Files have been moved back to their original locations.";
+    undoButton.hidden = true;
+    undoWarning.hidden = true;
+  } catch (error) {
+    undoButton.disabled = false;
+    undoButton.textContent = "Undo this run";
+    supportBanner.hidden = false;
+    supportBanner.textContent = `Undo stopped: ${error.message}`;
+  }
 }
 
 function syncChoiceCards() {
@@ -493,6 +507,8 @@ function resetApp() {
   state.folderPath = "";
   state.records = [];
   state.oldFileAction = "sort";
+  state.revertManifest = [];
+  state.lastDeletedCount = 0;
   exitMessage.hidden = true;
 
   actionInputs.forEach((input) => {

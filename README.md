@@ -96,9 +96,33 @@ For non-technical users, the cleanest distribution flow is:
 3. Upload the generated `.dmg` and `.zip` files to that Release.
 4. Tell users to download the app from the Releases page.
 
-Important: unsigned macOS apps may trigger a warning the first time someone
-opens them. Electron recommends code signing for desktop distribution because
-macOS and Windows trust signed apps more easily:
+### Opening the app on macOS (no terminal needed)
+
+Because the app is not yet code-signed, macOS will block it the first time.
+The easiest fix requires no terminal:
+
+1. Locate the downloaded `.app` file (or mount the `.dmg` and drag it to
+   Applications first).
+2. **Right-click** (or Control-click) the app icon.
+3. Select **Open** from the menu.
+4. A dialog appears saying the developer is unidentified — click **Open**.
+
+macOS remembers your choice, so future launches open normally with a
+double-click.
+
+**If you see "app is damaged and can't be opened"** (this can happen after
+dragging from a DMG), the right-click trick may not be enough. As a last
+resort, open Terminal, paste the command below, replace the path if you saved
+the app somewhere other than Applications, then press Return:
+
+```bash
+xattr -cr "/Applications/Downloads Folder Janitor.app"
+```
+
+After running that command, double-click the app and it will open normally.
+
+For long-term distribution, Electron recommends code signing so users never
+see this warning:
 [Electron packaging tutorial](https://www.electronjs.org/docs/latest/tutorial/tutorial-packaging).
 
 ## Browser constraint
@@ -124,11 +148,26 @@ The browser version asks:
 
 1. Do you want to sort your downloads folder out?
 2. Let me scan through your downloads folder. Are these categories fair?
-3. Do you want files older than 90 days deleted or sorted normally?
+3. How should files older than 90 days be handled? Choose one:
+   - **Sort them normally** — old files go into the same category folders as recent files.
+   - **Delete old files** — files older than 90 days are deleted during the run.
+   - **Move to review folder** — old files are moved into a separate
+     `Janitor Review - Older Than 90 Days` folder so you can decide what to
+     keep before deleting anything.
 4. Run the Downloads Janitor?
 
 When you confirm, the app shows a live progress bar and finishes with a
 `Downloads Folder sorted!` success screen.
+
+### Undoing a run
+
+After a successful run the success screen shows an **Undo this run** button.
+Clicking it moves every sorted file back to where it was before the run. The
+button disappears once the undo completes.
+
+Deleted files cannot be recovered by undo. If you chose the delete option and
+want a safety net, use **Move to review folder** instead — you can then delete
+the review folder manually once you are happy with the result.
 
 ## GitHub Pages link
 

@@ -2,64 +2,16 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
+const { categoryForName } = require("../categories.js");
 
-const CATEGORY_MAP = {
-  Images: [
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".gif",
-    ".webp",
-    ".bmp",
-    ".tif",
-    ".tiff",
-    ".svg",
-    ".heic",
-    ".raw",
-  ],
-  Documents: [".pdf", ".doc", ".docx", ".txt", ".rtf", ".md", ".pages", ".odt"],
-  Spreadsheets: [".xls", ".xlsx", ".csv", ".numbers", ".ods"],
-  Presentations: [".ppt", ".pptx", ".key", ".odp"],
-  Archives: [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tgz"],
-  Installers: [".dmg", ".pkg", ".msi", ".exe", ".deb", ".rpm", ".appimage", ".iso"],
-  Audio: [".mp3", ".wav", ".aac", ".flac", ".m4a", ".ogg"],
-  Video: [".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv", ".m4v"],
-  Code: [
-    ".py",
-    ".js",
-    ".ts",
-    ".tsx",
-    ".jsx",
-    ".java",
-    ".c",
-    ".cpp",
-    ".rb",
-    ".go",
-    ".rs",
-    ".html",
-    ".css",
-    ".json",
-    ".xml",
-    ".yml",
-    ".yaml",
-    ".sh",
-  ],
-};
+const OLD_FILE_ACTIONS = new Set(["sort", "delete", "review"]);
 
-const OLD_FILE_ACTIONS = new Set(["sort", "delete"]);
+function reviewFolderName(days) {
+  return `Janitor Review - Older Than ${days} Days`;
+}
 
 function getDownloadsDirectory() {
   return path.join(os.homedir(), "Downloads");
-}
-
-function categoryForName(fileName) {
-  const extension = path.extname(fileName).toLowerCase();
-  for (const [category, extensions] of Object.entries(CATEGORY_MAP)) {
-    if (extensions.includes(extension)) {
-      return category;
-    }
-  }
-  return "Other";
 }
 
 async function collectTopLevelFiles(targetDir) {
@@ -118,6 +70,7 @@ async function buildPlan({ days, oldFileAction }) {
   return files.map((file) => {
     const category = categoryForName(file.name);
     const isOld = isOlderThan(file.lastModified, cutoffTimestamp);
+    const isReview = isOld && oldFileAction === "review";
 
     return {
       name: file.name,
@@ -126,6 +79,7 @@ async function buildPlan({ days, oldFileAction }) {
       size: file.size,
       lastModified: file.lastModified,
       isOld,
+      isReview,
       action: isOld && oldFileAction === "delete" ? "delete" : "move",
     };
   });
@@ -155,6 +109,7 @@ async function runDownloadsJanitor(event, { days = 90, oldFileAction = "sort" } 
   let movedCount = 0;
   let deletedCount = 0;
   const total = records.length;
+  const revertManifest = [];
 
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
@@ -163,10 +118,13 @@ async function runDownloadsJanitor(event, { days = 90, oldFileAction = "sort" } 
       await fs.unlink(record.fullPath);
       deletedCount += 1;
     } else {
-      const destinationDir = path.join(targetDir, record.category);
+      const destinationDir = record.isReview
+        ? path.join(targetDir, reviewFolderName(days), record.category)
+        : path.join(targetDir, record.category);
       await fs.mkdir(destinationDir, { recursive: true });
       const destinationPath = await uniqueDestination(destinationDir, record.name);
       await fs.rename(record.fullPath, destinationPath);
+      revertManifest.push({ originalPath: record.fullPath, movedPath: destinationPath });
       movedCount += 1;
     }
 
@@ -183,7 +141,22 @@ async function runDownloadsJanitor(event, { days = 90, oldFileAction = "sort" } 
     deletedCount,
     total,
     folderPath: targetDir,
+    revertManifest,
   };
+}
+
+async function undoLastRun(_event, { revertManifest } = {}) {
+  if (!Array.isArray(revertManifest) || revertManifest.length === 0) {
+    return { restoredCount: 0 };
+  }
+
+  let restoredCount = 0;
+  for (const entry of revertManifest) {
+    await fs.rename(entry.movedPath, entry.originalPath);
+    restoredCount += 1;
+  }
+
+  return { restoredCount };
 }
 
 function createWindow() {
@@ -206,6 +179,7 @@ function createWindow() {
 app.whenReady().then(() => {
   ipcMain.handle("janitor:scan-downloads", scanDownloadsFolder);
   ipcMain.handle("janitor:run-downloads", runDownloadsJanitor);
+  ipcMain.handle("janitor:undo", undoLastRun);
 
   createWindow();
 

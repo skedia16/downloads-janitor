@@ -136,8 +136,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--days",
         type=int,
-        default=60,
-        help="Age threshold in days for old-file handling. Defaults to 60.",
+        default=90,
+        help="Age threshold in days for old-file handling. Defaults to 90.",
     )
     parser.add_argument(
         "--old-files",

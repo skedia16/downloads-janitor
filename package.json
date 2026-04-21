@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron-forge start",
     "desktop": "electron-forge start",
-    "check": "node --check app.js && node --check electron/main.js && node --check electron/preload.js && node --check forge.config.js",
+    "check": "node --check categories.js && node --check app.js && node --check electron/main.js && node --check electron/preload.js && node --check forge.config.js",
     "package": "electron-forge package",
     "make": "electron-forge make"
   },

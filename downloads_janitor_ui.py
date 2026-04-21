@@ -246,7 +246,7 @@ class DownloadsJanitorApp(tk.Tk):
         ttk.Label(
             self.card,
             text=(
-                "3. Do you want all files that are more than 90 days old "
+                f"3. Do you want all files that are more than {OLD_FILE_DAYS} days old "
                 "automatically deleted or sorted the same way as recent files?"
             ),
             style="Body.TLabel",
@@ -257,7 +257,7 @@ class DownloadsJanitorApp(tk.Tk):
 
         ttk.Radiobutton(
             choices,
-            text="Automatically delete files older than 90 days",
+            text=f"Automatically delete files older than {OLD_FILE_DAYS} days",
             value="delete",
             variable=self.old_file_action,
             style="Choice.TRadiobutton",
@@ -312,9 +312,9 @@ class DownloadsJanitorApp(tk.Tk):
             return
 
         action_text = (
-            "Delete files older than 90 days"
+            f"Delete files older than {OLD_FILE_DAYS} days"
             if self.old_file_action.get() == "delete"
-            else "Sort files older than 90 days like recent files"
+            else f"Sort files older than {OLD_FILE_DAYS} days like recent files"
         )
 
         ttk.Label(
