@@ -237,8 +237,12 @@ def build_plan(
     records: list[MoveRecord] = []
 
     for file_path in collect_top_level_files(target_dir, include_hidden):
-        category = category_for_file(file_path)
-        old_file = is_older_than(file_path, cutoff_timestamp)
+        try:
+            category = category_for_file(file_path)
+            old_file = is_older_than(file_path, cutoff_timestamp)
+        except FileNotFoundError:
+            # File was removed between the directory scan and stat — skip it.
+            continue
 
         if old_file and old_file_action == "delete":
             destination = None

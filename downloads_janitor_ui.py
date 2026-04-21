@@ -7,7 +7,7 @@ import queue
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from downloads_janitor import (
     build_plan,
@@ -30,7 +30,8 @@ class DownloadsJanitorApp(tk.Tk):
         self.minsize(760, 540)
         self.configure(bg="#f4efe5")
 
-        self.target_dir = validate_target(str(TARGET_DIR))
+        self.target_dir: Path | None = None
+        self.folder_label_var = tk.StringVar(value="No folder selected")
         self.old_file_action = tk.StringVar(value="sort")
         self.scan_records = []
         self.run_records = []
@@ -117,7 +118,7 @@ class DownloadsJanitorApp(tk.Tk):
 
         ttk.Label(
             header,
-            text=f"Target folder: {self.target_dir}",
+            textvariable=self.folder_label_var,
             style="HeaderMeta.TLabel",
         ).pack(anchor="w", pady=(6, 0))
 
@@ -139,8 +140,8 @@ class DownloadsJanitorApp(tk.Tk):
         ttk.Label(
             self.card,
             text=(
-                "The janitor will scan the top level of your Downloads folder, "
-                "suggest categories, and wait for your confirmation before it "
+                "Choose any folder on your Mac. The janitor will scan its top-level "
+                "files, suggest categories, and wait for your confirmation before it "
                 "moves anything."
             ),
             style="Muted.TLabel",
@@ -151,9 +152,9 @@ class DownloadsJanitorApp(tk.Tk):
 
         ttk.Button(
             buttons,
-            text="Yes",
+            text="Yes, choose a folder to sort",
             style="Action.TButton",
-            command=self.show_scan_step,
+            command=self._choose_folder_and_scan,
         ).pack(side="left", padx=(0, 12))
         ttk.Button(
             buttons,
@@ -161,6 +162,23 @@ class DownloadsJanitorApp(tk.Tk):
             style="Secondary.TButton",
             command=self.destroy,
         ).pack(side="left")
+
+    def _choose_folder_and_scan(self) -> None:
+        chosen = filedialog.askdirectory(
+            title="Choose a folder to organise",
+            initialdir=str(TARGET_DIR),
+        )
+        if not chosen:
+            return  # user cancelled the picker
+
+        try:
+            self.target_dir = validate_target(chosen)
+        except (FileNotFoundError, NotADirectoryError) as exc:
+            messagebox.showerror("Downloads Folder Janitor", str(exc))
+            return
+
+        self.folder_label_var.set(str(self.target_dir))
+        self.show_scan_step()
 
     def show_scan_step(self) -> None:
         self.clear_card()

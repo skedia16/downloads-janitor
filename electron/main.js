@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
@@ -58,12 +58,11 @@ async function uniqueDestination(destinationDir, originalName) {
   }
 }
 
-async function buildPlan({ days, oldFileAction }) {
+async function buildPlan({ days, oldFileAction, targetDir }) {
   if (!OLD_FILE_ACTIONS.has(oldFileAction)) {
     throw new Error("Unsupported old-file action.");
   }
 
-  const targetDir = getDownloadsDirectory();
   const cutoffTimestamp = Date.now() - days * 24 * 60 * 60 * 1000;
   const files = await collectTopLevelFiles(targetDir);
 
@@ -85,9 +84,24 @@ async function buildPlan({ days, oldFileAction }) {
   });
 }
 
-async function scanDownloadsFolder(_event, { days = 90 } = {}) {
-  const targetDir = getDownloadsDirectory();
-  const records = await buildPlan({ days, oldFileAction: "sort" });
+async function chooseFolder(_event) {
+  const result = await dialog.showOpenDialog({
+    title: "Choose a folder to organise",
+    buttonLabel: "Select Folder",
+    properties: ["openDirectory"],
+    defaultPath: getDownloadsDirectory(),
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return result.filePaths[0];
+}
+
+async function scanDownloadsFolder(_event, { days = 90, folderPath } = {}) {
+  const targetDir = folderPath || getDownloadsDirectory();
+  const records = await buildPlan({ days, oldFileAction: "sort", targetDir });
 
   return {
     folderPath: targetDir,
@@ -103,9 +117,9 @@ async function scanDownloadsFolder(_event, { days = 90 } = {}) {
   };
 }
 
-async function runDownloadsJanitor(event, { days = 90, oldFileAction = "sort" } = {}) {
-  const targetDir = getDownloadsDirectory();
-  const records = await buildPlan({ days, oldFileAction });
+async function runDownloadsJanitor(event, { days = 90, oldFileAction = "sort", folderPath } = {}) {
+  const targetDir = folderPath || getDownloadsDirectory();
+  const records = await buildPlan({ days, oldFileAction, targetDir });
   let movedCount = 0;
   let deletedCount = 0;
   const total = records.length;
@@ -128,12 +142,16 @@ async function runDownloadsJanitor(event, { days = 90, oldFileAction = "sort" } 
       movedCount += 1;
     }
 
-    event.sender.send("janitor:progress", {
-      completed: index + 1,
-      total,
-      fileName: record.name,
-      action: record.action,
-    });
+    try {
+      event.sender.send("janitor:progress", {
+        completed: index + 1,
+        total,
+        fileName: record.name,
+        action: record.action,
+      });
+    } catch {
+      // Window may have been closed during processing — continue the run
+    }
   }
 
   return {
@@ -147,16 +165,22 @@ async function runDownloadsJanitor(event, { days = 90, oldFileAction = "sort" } 
 
 async function undoLastRun(_event, { revertManifest } = {}) {
   if (!Array.isArray(revertManifest) || revertManifest.length === 0) {
-    return { restoredCount: 0 };
+    return { restoredCount: 0, errors: [] };
   }
 
+  const errors = [];
   let restoredCount = 0;
+
   for (const entry of revertManifest) {
-    await fs.rename(entry.movedPath, entry.originalPath);
-    restoredCount += 1;
+    try {
+      await fs.rename(entry.movedPath, entry.originalPath);
+      restoredCount += 1;
+    } catch (err) {
+      errors.push({ file: entry.movedPath, error: err.message });
+    }
   }
 
-  return { restoredCount };
+  return { restoredCount, errors };
 }
 
 function createWindow() {
@@ -177,6 +201,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  ipcMain.handle("janitor:choose-folder", chooseFolder);
   ipcMain.handle("janitor:scan-downloads", scanDownloadsFolder);
   ipcMain.handle("janitor:run-downloads", runDownloadsJanitor);
   ipcMain.handle("janitor:undo", undoLastRun);

@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  chooseFolder: () =>
+    ipcRenderer.invoke("janitor:choose-folder"),
   scanDownloadsFolder: (options) =>
     ipcRenderer.invoke("janitor:scan-downloads", options),
   runDownloadsJanitor: (options) =>

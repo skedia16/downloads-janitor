@@ -14,7 +14,6 @@ const state = {
   currentStep: 1,
   removeProgressListener: null,
   revertManifest: [],
-  lastDeletedCount: 0,
 };
 
 const supportBanner = document.querySelector("#supportBanner");
@@ -58,8 +57,7 @@ function init() {
   }
 
   if (isDesktopApp) {
-    startButton.textContent = "Yes, scan my Downloads folder";
-    rescanButton.textContent = "Scan Downloads again";
+    startButton.textContent = "Yes, choose a folder to sort";
   }
 
   startButton.addEventListener("click", handleStart);
@@ -128,7 +126,10 @@ async function handleStart() {
 
 async function scanDesktopDownloads() {
   try {
-    const result = await window.electronAPI.scanDownloadsFolder({ days: OLD_FILE_DAYS });
+    const chosenPath = await window.electronAPI.chooseFolder();
+    if (!chosenPath) return; // user cancelled the dialog
+
+    const result = await window.electronAPI.scanDownloadsFolder({ days: OLD_FILE_DAYS, folderPath: chosenPath });
     state.directoryName = result.folderName;
     state.folderPath = result.folderPath;
     state.records = result.records;
@@ -137,7 +138,7 @@ async function scanDesktopDownloads() {
     showStep(2);
   } catch (error) {
     supportBanner.hidden = false;
-    supportBanner.textContent = `Could not scan your Downloads folder: ${error.message}`;
+    supportBanner.textContent = `Could not scan the selected folder: ${error.message}`;
   }
 }
 
@@ -289,6 +290,7 @@ async function runDesktopJanitor() {
     const result = await window.electronAPI.runDownloadsJanitor({
       days: OLD_FILE_DAYS,
       oldFileAction: state.oldFileAction,
+      folderPath: state.folderPath,
     });
 
     state.revertManifest = result.revertManifest || [];
@@ -436,7 +438,8 @@ async function entryExists(directoryHandle, entryName) {
     await directoryHandle.getFileHandle(entryName);
     return true;
   } catch (error) {
-    return error?.name !== "NotFoundError" ? Promise.reject(error) : false;
+    if (error?.name !== "NotFoundError") throw error;
+    return false;
   }
 }
 
@@ -454,7 +457,6 @@ function appendLog(message) {
 }
 
 function finishRun(movedCount, deletedCount) {
-  state.lastDeletedCount = deletedCount;
   successText.textContent =
     deletedCount > 0
       ? `Sorted ${movedCount} files and deleted ${deletedCount} older file${deletedCount === 1 ? "" : "s"}.`
@@ -473,7 +475,11 @@ async function undoRun() {
 
   try {
     if (isDesktopApp) {
-      await window.electronAPI.undoLastRun({ revertManifest: state.revertManifest });
+      const result = await window.electronAPI.undoLastRun({ revertManifest: state.revertManifest });
+      if (result.errors && result.errors.length > 0) {
+        supportBanner.hidden = false;
+        supportBanner.textContent = `Undo finished with ${result.errors.length} error(s) — some files may not have been restored.`;
+      }
     } else {
       for (const entry of state.revertManifest) {
         const fileHandle = await entry.targetDirectory.getFileHandle(entry.movedName);
@@ -508,7 +514,6 @@ function resetApp() {
   state.records = [];
   state.oldFileAction = "sort";
   state.revertManifest = [];
-  state.lastDeletedCount = 0;
   exitMessage.hidden = true;
 
   actionInputs.forEach((input) => {
