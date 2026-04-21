@@ -528,6 +528,10 @@ function resetApp() {
   summaryCard.innerHTML = "";
   activityLog.innerHTML = "";
   updateProgress(0, "Preparing files...");
+  undoButton.hidden = true;
+  undoButton.disabled = false;
+  undoButton.textContent = "Undo this run";
+  undoWarning.hidden = true;
   supportBanner.hidden = true;
   showStep(1);
 }
